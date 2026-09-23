@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A child session can now follow up the external-job runs it launched with `resume`. The nested resume path always needed a Pi session file, which an external-job run does not have, so the provider's `followUp` never ran. A repeated resume from a child also no longer calls `followUp` a second time. Thanks to [@juanpprieto](https://github.com/juanpprieto) for [#2465](https://github.com/nicobailon/pi-subagents/issues/2465).
 - `subagent_supervisor` `pending` now shows each request's question text, so a parent that missed the request notice can still read and answer it ([#2460](https://github.com/nicobailon/pi-subagents/issues/2460)).
 - Awaited workflow children now emit `subagent:async-complete` without sending a separate child notification. Thanks to [@mmarabel](https://github.com/mmarabel) for [#2456](https://github.com/nicobailon/pi-subagents/issues/2456).
 - Async status now reports a subagent's actual context limit once its session starts, including a window raised by an extension, instead of the parent registry's value. Thanks to [@johnhenaot](https://github.com/johnhenaot) for [#2448](https://github.com/nicobailon/pi-subagents/pull/2448).
