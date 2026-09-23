@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { EXTERNAL_JOB_PROVIDER_REGISTRY_KEY, registerExternalJobProvider } from "../../src/api/external-job-provider.ts";
-import { createChildExternalJobBridgeSweeper } from "../../src/runs/shared/external-job-bridge.ts";
+import { createChildExternalJobBridgeSweeper, EXTERNAL_JOB_BRIDGE_REQUEST_DIR } from "../../src/runs/shared/external-job-bridge.ts";
 import { runExternalJob } from "../../src/runs/shared/external-job-runner.ts";
 
 const tempDirs: string[] = [];
@@ -66,6 +66,33 @@ describe("child external-job bridge sweeper", () => {
 		}
 	});
 
+	it("keeps a run tracked while its launch status has no runner metadata, then services the bridge", async () => {
+		const dir = tempDir("pi-child-bridge-startup-");
+		fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify({ state: "running", steps: [{ agent: "gpt-pro", status: "pending" }] }));
+		let starts = 0;
+		registerExternalJobProvider({
+			name: "surf-oracle",
+			start: () => {
+				starts += 1;
+				return { providerJobId: "job-1", state: "completed" };
+			},
+			status: () => ({ providerJobId: "job-1", state: "completed" }),
+			reattach: () => ({ providerJobId: "job-1", state: "completed" }),
+			result: () => ({ providerJobId: "job-1", state: "completed", output: "advisor result" }),
+		});
+		const sweeper = createChildExternalJobBridgeSweeper();
+		try {
+			sweeper.track("run-1", dir);
+			assert.equal(sweeper.sweep(), 1);
+			writeStatus(dir, "running", "external-job");
+			const result = await sweepUntil(sweeper, runJob(dir));
+			assert.equal(result.output, "advisor result");
+			assert.equal(starts, 1);
+		} finally {
+			sweeper.dispose();
+		}
+	});
+
 	it("fails the run closed when the child has no provider registered", async () => {
 		const dir = tempDir("pi-child-bridge-missing-");
 		writeStatus(dir, "running", "external-job");
@@ -80,13 +107,16 @@ describe("child external-job bridge sweeper", () => {
 		}
 	});
 
-	it("drops a run without external-job steps and never services it", () => {
+	it("never services a run without external-job steps and releases it when final", () => {
 		const dir = tempDir("pi-child-bridge-native-");
 		writeStatus(dir, "running", "pi");
+		fs.mkdirSync(path.join(dir, EXTERNAL_JOB_BRIDGE_REQUEST_DIR));
 		const sweeper = createChildExternalJobBridgeSweeper();
 		sweeper.track("run-2", dir);
-		assert.equal(sweeper.sweep(), 0);
+		assert.equal(sweeper.sweep(), 1);
 		assert.equal(fs.existsSync(path.join(dir, "external-job-responses")), false);
+		writeStatus(dir, "complete", "pi");
+		assert.equal(sweeper.sweep(), 0);
 		sweeper.dispose();
 	});
 
