@@ -1536,7 +1536,8 @@ function resolveNestedExternalJobResumeTarget(match: ResolvedSubagentRunId & { k
 		// Pi steps record no runner, and neither does a launch status before the runner starts.
 		// A session file means a Pi run; otherwise the agent definition says what the step runs.
 		if (nestedRunSessionFile(run)) return undefined;
-		if (configuredRunnerType(step.agent, status?.cwd ?? deps.state.baseCwd, params, deps) === "external-job") throw new Error(externalJobWithoutMetadataMessage(run.id));
+		const agent = deps.discoverAgents(status?.cwd ?? deps.state.baseCwd, resolveExecutionAgentScope(params.agentScope)).agents.find((candidate) => candidate.name === step.agent);
+		if (agent?.runner?.type === "external-job") throw new Error(externalJobWithoutMetadataMessage(run.id));
 		return undefined;
 	} else if (step.runner.type !== "external-job") {
 		return undefined;
@@ -1545,15 +1546,6 @@ function resolveNestedExternalJobResumeTarget(match: ResolvedSubagentRunId & { k
 	const target = resolveAsyncResumeTarget(compactOptional<Parameters<typeof resolveAsyncResumeTarget>[0]>({ dir: asyncDir, index: params.index }), nestedRunScope(match.match.rootRunId), { requireSessionFile: false });
 	if (target.kind === "live") throw new Error(externalJobStillRunningMessage(target.runId));
 	return { source: "async", ...target };
-}
-
-function configuredRunnerType(agentName: string, cwd: string, params: SubagentParamsLike, deps: ExecutorDeps): string | undefined {
-	try {
-		return deps.discoverAgents(cwd, resolveExecutionAgentScope(params.agentScope)).agents.find((agent) => agent.name === agentName)?.runner?.type;
-	} catch {
-		// Without the agent definition the run keeps its Pi resume path, which fails closed on the missing session file.
-		return undefined;
-	}
 }
 
 function readNestedRunStatus(asyncDir: string, run: NestedRunSummary): AsyncStatus | null {
